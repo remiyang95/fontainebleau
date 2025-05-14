@@ -71,44 +71,60 @@ df, load_warning = load_data()
 
 # --- Utility functions ---
 def not_none_nan(x):
+    """Return True if x is not None, not NaN, and not an empty string."""
     return pd.notna(x) and x is not None and x != ''
 
 def extract_grade_group(grade):
+    """Extract the leading digit from a grade string (e.g., '6a+' -> '6')."""
     if pd.isna(grade):
         return None
     m = re.match(r"(\d+)", str(grade))
     return m.group(1) if m else None
 
 def format_grade(row):
+    """Format the grade and alt_grade fields for display."""
     main = str(row['grade']) if pd.notna(row['grade']) else ''
     alt = str(row['alt_grade']) if 'alt_grade' in row and pd.notna(row['alt_grade']) and row['alt_grade'] != row['grade'] else ''
     return f"{main} ({alt})" if alt else main
 
 def format_percent(val):
+    """Format a value as a percent string, handling NaN gracefully."""
     try:
         return f"{round(float(val)/100*100)}%" if pd.notna(val) else ''
     except:
         return ''
 
 def parse_height(val):
+    """Parse the first number from a height string (e.g., '175-180' -> 175.0)."""
     try:
         return float(str(val).split('-')[0])
     except:
         return np.nan
 
+# --- Grade sorting for all filters and tables ---
 def grade_sort_key(g):
-    try:
-        return int(re.match(r"(\d+)", str(g)).group(1))
-    except:
-        return 99
+    """Sort Fontainebleau grades by number, letter (a<b<c), and suffix (- < '' < +)."""
+    import re
+    # Match number, letter (a/b/c), and suffix (+/-)
+    m = re.match(r"(\d+)([abc]?)([+-]?)", str(g))
+    if not m:
+        return (999, 3, 3, g)  # Put non-matching grades at end
+    num = int(m.group(1))
+    letter = m.group(2)
+    suf = m.group(3)
+    letter_order = {'a': 0, 'b': 1, 'c': 2, '': 3}
+    suf_order = {'-': 0, '': 1, '+': 2}
+    return (num, letter_order.get(letter, 3), suf_order.get(suf, 3), str(g))
 
 def robust_find_first_grade_idx(grade_list, prefix):
+    """Find the index of the first grade in grade_list that starts with prefix."""
     for i, g in enumerate(grade_list):
         if not_none_nan(g) and str(g).startswith(prefix):
             return i
     return 0
 
 def robust_find_last_grade_idx(grade_list, prefix):
+    """Find the index of the last grade in grade_list that starts with prefix."""
     idx = -1
     for i, g in enumerate(grade_list):
         if not_none_nan(g) and str(g).startswith(prefix):
@@ -175,21 +191,13 @@ if 'easy_access' not in st.session_state:
     st.session_state['easy_access'] = False
 
 # Top-of-page filters, always visible
-with st.container():
-    # --- Filter options and Easy Access logic ---
-    # (CSS for buttons is already in the main block at the top)
-    all_sectors = sorted(df['sector'].dropna().unique().tolist())
-    all_grade_groups = sorted(df['grade_group'].dropna().unique().tolist())
-    all_grades = sorted(df['grade'].dropna().unique().tolist())
-    sectors_to_show = EASY_ACCESS_SECTORS if st.session_state['easy_access'] else all_sectors
-
-    # Sectors and Easy Access side by side
-    col_sectors, col_easy = st.columns([3, 9])
-    with col_sectors:
-        with st.expander("Sectors", expanded=True):
-            selected_sector = st.selectbox("Select sector", ["All"] + sectors_to_show, index=0, key="sector_selectbox", label_visibility='collapsed')
-    with col_easy:
-        # Easy Access button and helper text in the same column
+with st.sidebar:
+    st.header("Filters")
+    # Sectors
+    with st.expander("Sectors", expanded=True):
+        sectors_to_show = EASY_ACCESS_SECTORS if st.session_state['easy_access'] else sorted(df['sector'].dropna().unique().tolist())
+        selected_sector = st.selectbox("Select sector", ["All"] + sectors_to_show, index=0, key="sector_selectbox", label_visibility='collapsed')
+        # Easy Access button and helper text
         clicked = st.button(
             'Easy Access',
             key='easy_access_btn',
@@ -200,152 +208,104 @@ with st.container():
             st.session_state['easy_access'] = not st.session_state.get('easy_access', False)
             st.rerun()
         st.markdown(
-            '<div style="margin-top: 0; color: #666; font-size: 1em;">'
-            'Filter for Rocher Canon, Rocher Canon Ouest, Le Calvaire, Roche d\'Hercule, Mont Ussy, Mont Ussy Est'
+            '<div style="margin-top: 0; color: #666; font-size: 0.85em; font-style: italic; padding-bottom: 0.7em;">'
+            '<b>Easy Access</b>: Rocher Canon (+Ouest), Le Calvaire, Roche d\'Hercule, Mont Ussy (+Est)'
             '</div>',
             unsafe_allow_html=True
         )
-
-    # Defaults
-    all_sectors = sorted(df['sector'].dropna().unique().tolist())
-    all_grade_groups = sorted(df['grade_group'].dropna().unique().tolist())
-    all_grades = sorted(df['grade'].dropna().unique().tolist())
-
-    # Session state for remembering selections
-    if 'selected_sector' not in st.session_state:
-        st.session_state['selected_sector'] = 'All'
-    if 'selected_grade_groups' not in st.session_state:
-        st.session_state['selected_grade_groups'] = all_grade_groups.copy()
-    if 'selected_grades' not in st.session_state:
-        st.session_state['selected_grades'] = all_grades.copy()
-
-    # Always show all possible options for each filter
-    all_sectors = sorted(df['sector'].dropna().unique().tolist())
-    all_grade_groups = sorted(df['grade_group'].dropna().unique().tolist())
-    all_grades = sorted(df['grade'].dropna().unique().tolist())
-    # Apply easy-access filter if active
-    sectors_to_show = EASY_ACCESS_SECTORS if st.session_state['easy_access'] else all_sectors
-
-    # Start a new row of columns for Grades, Height, Stars, Ratings filters
-    filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
-    with filter_col1:
-        with st.expander("Grades", expanded=True):
-            import re
-            def grade_sort_key(g):
-                m = re.match(r"(\d+)([+-]?)", str(g))
-                if not m:
-                    return (999, 1, g)
-                num = int(m.group(1))
-                suf = m.group(2)
-                suf_order = {'-': 0, '': 1, '+': 2}
-                return (num, suf_order.get(suf, 3), str(g))
-            import numpy as np
-            def not_none_nan(x):
-                return x is not None and not (isinstance(x, float) and np.isnan(x))
-            all_grades = sorted([g for g in df['grade'].unique().tolist() if not_none_nan(g)], key=grade_sort_key)
-            sorted_grades = [g for g in all_grades if not_none_nan(g)]
-            if sorted_grades:
-                idx_min, idx_max = 0, len(sorted_grades) - 1
-                grade_indices = list(range(len(sorted_grades)))
-                grade_labels = {i: sorted_grades[i] for i in grade_indices}
-                grade_slider_label = f"Select grade range ({sorted_grades[0]} to {sorted_grades[-1]})"
-                def robust_find_first_grade_idx(grade_list, prefix):
-                    for i, g in enumerate(grade_list):
-                        if not_none_nan(g) and str(g).startswith(prefix):
-                            return i
-                    return 0
-                def robust_find_last_grade_idx(grade_list, prefix):
-                    idx = -1
-                    for i, g in enumerate(grade_list):
-                        if not_none_nan(g) and str(g).startswith(prefix):
-                            idx = i
-                    return idx if idx != -1 else len(grade_list) - 1
-                default_low_idx = robust_find_first_grade_idx(sorted_grades, "5")
-                default_high_idx = robust_find_last_grade_idx(sorted_grades, "7")
-                if default_low_idx is None or not isinstance(default_low_idx, int):
-                    default_low_idx = idx_min
-                if default_high_idx is None or not isinstance(default_high_idx, int):
-                    default_high_idx = idx_max
-                default_low_idx = max(idx_min, min(default_low_idx, idx_max))
-                default_high_idx = max(idx_min, min(default_high_idx, idx_max))
-                selected_idx_range = st.slider(
-                    grade_slider_label,
-                    min_value=idx_min,
-                    max_value=idx_max,
-                    value=(default_low_idx, default_high_idx),
-                    step=1,
-                    format="",
-                    key="grade_slider",
-                    label_visibility='collapsed',
-                )
-                selected_grades = sorted_grades[selected_idx_range[0]:selected_idx_range[1]+1]
-                st.caption(f"Selected: {selected_grades[0]} to {selected_grades[-1]}")
-            else:
-                selected_grades = []
-    with filter_col2:
-        with st.expander("Stars", expanded=True):
-            stars = df['stars'].dropna().astype(float)
-            if not stars.empty:
-                min_stars = float(np.floor(stars.min()))
-                max_stars = float(np.ceil(stars.max()))
-                default_stars = (3.5, max_stars) if 3.5 >= min_stars and 3.5 <= max_stars else (min_stars, max_stars)
-                # Ensure both are float
-                default_stars = (float(default_stars[0]), float(default_stars[1]))
-                selected_stars = st.slider(
-                    "Select stars range",
-                    min_value=min_stars,
-                    max_value=max_stars,
-                    value=default_stars,
-                    step=0.5,
-                    format="%.1f",
-                    key="stars_slider",
-                    label_visibility='collapsed',
-                )
-            else:
-                selected_stars = None
-    with filter_col3:
-        with st.expander("Number of Ratings", expanded=True):
-            ratings = df['num_ratings'].dropna().astype(int)
-            if not ratings.empty:
-                min_ratings = int(ratings.min())
-                max_ratings = int(ratings.max())
-                show_max = 100 if max_ratings >= 100 else max_ratings
-                slider_max_label = '100+' if max_ratings >= 100 else str(max_ratings)
-                selected_ratings = st.slider(
-                    "Number of Ratings",
-                    min_value=min_ratings,
-                    max_value=show_max,
-                    value=(10, show_max) if 10 >= min_ratings and 10 <= show_max else (min_ratings, show_max),
-                    step=1,
-                    format="%d",
-                    key="ratings_slider",
-                    label_visibility='collapsed',
-                )
-                # If user selects the max, treat as 100 or more
-                if show_max == 100 and selected_ratings[1] == 100:
-                    selected_ratings = (selected_ratings[0], max_ratings)
-
-            else:
-                selected_ratings = None
-    with filter_col4:
-        with st.expander("Shortest Climber Height", expanded=True):
-            height_bands = sorted([str(x) for x in df['shortest_climber_height'].dropna().unique()])
-            if height_bands:
-                idx_min, idx_max = 0, len(height_bands) - 1
-                selected_idx_range = st.slider(
-                    "Select height band range",
-                    min_value=idx_min,
-                    max_value=idx_max,
-                    value=(idx_min, idx_max),
-                    step=1,
-                    format="",
-                    key="height_slider",
-                    label_visibility='collapsed',
-                )
-                selected_height_bands = height_bands[selected_idx_range[0]:selected_idx_range[1]+1]
-                st.caption(f"Selected: {selected_height_bands[0]} cm to {selected_height_bands[-1]} cm")
-            else:
-                selected_height_bands = []
+    # Grades
+    with st.expander("Grades", expanded=True):
+        sorted_grades = sorted([g for g in df['grade'].dropna().unique() if not_none_nan(g)], key=grade_sort_key)
+        if sorted_grades:
+            idx_min, idx_max = 0, len(sorted_grades) - 1
+            grade_indices = list(range(len(sorted_grades)))
+            grade_labels = {i: sorted_grades[i] for i in grade_indices}
+            grade_slider_label = f"Select grade range ({sorted_grades[0]} to {sorted_grades[-1]})"
+            default_low_idx = robust_find_first_grade_idx(sorted_grades, "5")
+            default_high_idx = robust_find_last_grade_idx(sorted_grades, "7")
+            if default_low_idx is None or not isinstance(default_low_idx, int):
+                default_low_idx = idx_min
+            if default_high_idx is None or not isinstance(default_high_idx, int):
+                default_high_idx = idx_max
+            default_low_idx = max(idx_min, min(default_low_idx, idx_max))
+            default_high_idx = max(idx_min, min(default_high_idx, idx_max))
+            selected_idx_range = st.slider(
+                grade_slider_label,
+                min_value=idx_min,
+                max_value=idx_max,
+                value=(default_low_idx, default_high_idx),
+                step=1,
+                format="",
+                key="grade_slider",
+                label_visibility='collapsed',
+            )
+            selected_grades = sorted_grades[selected_idx_range[0]:selected_idx_range[1]+1]
+            st.caption(f"Selected: {selected_grades[0]} to {selected_grades[-1]}")
+        else:
+            selected_grades = []
+    # Stars
+    with st.expander("Stars", expanded=True):
+        stars = df['stars'].dropna().astype(float)
+        if not stars.empty:
+            min_stars = float(np.floor(stars.min()))
+            max_stars = float(np.ceil(stars.max()))
+            default_stars = (3.5, max_stars) if 3.5 >= min_stars and 3.5 <= max_stars else (min_stars, max_stars)
+            # Ensure both are float
+            default_stars = (float(default_stars[0]), float(default_stars[1]))
+            selected_stars = st.slider(
+                "Select stars range",
+                min_value=min_stars,
+                max_value=max_stars,
+                value=default_stars,
+                step=0.5,
+                format="%.1f",
+                key="stars_slider",
+                label_visibility='collapsed',
+            )
+        else:
+            selected_stars = None
+    # Number of Ratings
+    with st.expander("Number of Ratings", expanded=True):
+        ratings = df['num_ratings'].dropna().astype(int)
+        if not ratings.empty:
+            min_ratings = int(ratings.min())
+            max_ratings = int(ratings.max())
+            show_max = 100 if max_ratings >= 100 else max_ratings
+            slider_max_label = '100+' if max_ratings >= 100 else str(max_ratings)
+            selected_ratings = st.slider(
+                "Number of Ratings",
+                min_value=min_ratings,
+                max_value=show_max,
+                value=(10, show_max) if 10 >= min_ratings and 10 <= show_max else (min_ratings, show_max),
+                step=1,
+                format="%d",
+                key="ratings_slider",
+                label_visibility='collapsed',
+            )
+            # If user selects the max, treat as 100 or more
+            if show_max == 100 and selected_ratings[1] == 100:
+                selected_ratings = (selected_ratings[0], max_ratings)
+        else:
+            selected_ratings = None
+    # Shortest Climber Height
+    with st.expander("Shortest Climber Height", expanded=True):
+        height_bands = sorted([str(x) for x in df['shortest_climber_height'].dropna().unique()])
+        if height_bands:
+            idx_min, idx_max = 0, len(height_bands) - 1
+            selected_idx_range = st.slider(
+                "Select height band range",
+                min_value=idx_min,
+                max_value=idx_max,
+                value=(idx_min, idx_max),
+                step=1,
+                format="",
+                key="height_slider",
+                label_visibility='collapsed',
+            )
+            selected_height_bands = height_bands[selected_idx_range[0]:selected_idx_range[1]+1]
+            st.caption(f"Selected: {selected_height_bands[0]} cm to {selected_height_bands[-1]} cm")
+        else:
+            selected_height_bands = []
 
 # Use only the user's selections for filtering
 filtered_df = df.copy()
@@ -358,7 +318,7 @@ if selected_sector != "All":
 if 'sorted_grades' in locals() and selected_grades:
     filtered_df = filtered_df[filtered_df['grade'].isin(selected_grades)]
 # For shortest climber height
-if 'selected_height' in locals() and selected_height is not None:
+if 'selected_height' in locals() and selected_height_bands:
     def parse_height(val):
         if pd.isna(val) or val == '':
             return np.nan
@@ -366,7 +326,7 @@ if 'selected_height' in locals() and selected_height is not None:
             return float(val)
         m = re.match(r"(\d+)", str(val))
         return float(m.group(1)) if m else np.nan
-    filtered_df = filtered_df[filtered_df['shortest_climber_height'].apply(parse_height).between(selected_height[0], selected_height[1], inclusive='both')]
+    filtered_df = filtered_df[filtered_df['shortest_climber_height'].apply(parse_height).between(parse_height(selected_height_bands[0]), parse_height(selected_height_bands[-1]), inclusive='both')]
 # For stars
 if 'selected_stars' in locals() and selected_stars is not None:
     filtered_df = filtered_df[(filtered_df['stars'].astype(float) >= selected_stars[0]) & (filtered_df['stars'].astype(float) <= selected_stars[1])]
@@ -377,16 +337,27 @@ if 'selected_ratings' in locals() and selected_ratings is not None:
 # Define custom sort key for grades (used in filter)
 def grade_sort_key(g):
     import re
-    m = re.match(r"(\d+)([+-]?)", str(g))
+    # Match number, letter (a/b/c), and suffix (+/-)
+    m = re.match(r"(\d+)([abc]?)([+-]?)", str(g))
     if not m:
-        return (999, 1, g)  # Put non-matching grades at end
+        return (999, 3, 3, g)  # Put non-matching grades at end
     num = int(m.group(1))
-    suf = m.group(2)
+    letter = m.group(2)
+    suf = m.group(3)
+    letter_order = {'a': 0, 'b': 1, 'c': 2, '': 3}
     suf_order = {'-': 0, '': 1, '+': 2}
-    return (num, suf_order.get(suf, 3), str(g))
+    return (num, letter_order.get(letter, 3), suf_order.get(suf, 3), str(g))
 
-# Show 'Number of Problems by Grade Group' and 'Grade' charts side-by-side (flipped)
-col_group, col_grade = st.columns(2)
+# Show 'Number of Boulders by Grade Group' and 'Grade' charts
+# Ensure grade_group_label exists on filtered_df
+filtered_df['grade_group_label'] = filtered_df['grade_group'].fillna('Other').astype(str)
+all_grade_groups = filtered_df['grade_group_label'].unique().tolist()
+if len(all_grade_groups) > 1:
+    col_group, col_grade = st.columns(2)
+    show_group_chart = True
+else:
+    col_grade = st.container()
+    show_group_chart = False
 # --- Consistent color mapping for grades and grade groups ---
 import matplotlib
 import matplotlib.colors as mcolors
@@ -419,36 +390,35 @@ for g in all_grade_groups:
     if g not in grade_group_color_map:
         grade_group_color_map[g] = '#888888'
 
-with col_group:
-    # Replace None/null grade_group with 'Other'
-    group_counts = filtered_df['grade_group'].fillna('Other').value_counts()
-    # Move 'Other' to the end
-    if 'Other' in group_counts.index:
-        group_counts = group_counts[[g for g in group_counts.index if g != 'Other'] + ['Other']]
-    # Convert to int and sort (excluding 'Other')
-    try:
-        idx_numeric = [int(float(x)) for x in group_counts.index if x != 'Other']
-    except Exception:
-        idx_numeric = [x for x in group_counts.index if x != 'Other']
-    sorted_idx = sorted(idx_numeric)
-    sorted_idx = [str(x) for x in sorted_idx] + (['Other'] if 'Other' in group_counts.index else [])
-    group_counts = group_counts.loc[sorted_idx]
-    x_labels = [str(x) for x in group_counts.index]
-    fig_group = px.bar(
-        x=x_labels,
-        y=group_counts.values,
-        color=x_labels,
-        color_discrete_map=grade_group_color_map,
-        labels={'x': 'Grade Group', 'y': 'Number of Problems'},
-        title="Number of Problems by Grade Group"
-    )
-    fig_group.update_xaxes(type="category")
-    fig_group.update_layout(
-        showlegend=False,
-        title_font_size=26  # 30% larger than typical 20px
-    )
-    fig_group.update_traces(hovertemplate='<b>Number of Problems:</b> %{y}<extra></extra>')
-    st.plotly_chart(fig_group, use_container_width=True)
+if show_group_chart:
+    with col_group:
+        # Replace None/null grade_group with 'Other'
+        group_counts = filtered_df['grade_group'].fillna('Other').value_counts()
+        # Move 'Other' to the end
+        if 'Other' in group_counts.index:
+            group_counts = group_counts[[g for g in group_counts.index if g != 'Other'] + ['Other']]
+        # Convert to int and sort (excluding 'Other')
+        try:
+            idx_numeric = [int(float(x)) for x in group_counts.index if x != 'Other']
+        except Exception:
+            idx_numeric = [x for x in group_counts.index if x != 'Other']
+        sorted_idx = sorted(idx_numeric)
+        x_labels = [str(x) for x in sorted_idx] + (['Other'] if 'Other' in group_counts.index else [])
+        fig_group = px.bar(
+            x=x_labels,
+            y=group_counts.values,
+            color=x_labels,
+            color_discrete_map=grade_group_color_map,
+            labels={'x': 'Grade Group', 'y': 'Number of Boulders'},
+            title="Number of Boulders by Grade Group"
+        )
+        fig_group.update_xaxes(type="category")
+        fig_group.update_layout(
+            showlegend=False,
+            title_font_size=26  # 30% larger than typical 20px
+        )
+        fig_group.update_traces(hovertemplate='<b>Number of Boulders:</b> %{y}<extra></extra>')
+        st.plotly_chart(fig_group, use_container_width=True)
 with col_grade:
     grade_counts = filtered_df['grade'].value_counts()
     grade_counts = grade_counts.loc[sorted(grade_counts.index, key=grade_sort_key)]
@@ -458,15 +428,15 @@ with col_grade:
         y=grade_counts.values,
         color=grades_x,
         color_discrete_map=grade_color_map,
-        labels={'x': 'Grade', 'y': 'Number of Problems'},
-        title="Number of Problems by Grade"
+        labels={'x': 'Grade', 'y': 'Number of Boulders'},
+        title="Number of Boulders by Grade"
     )
     fig_grade.update_xaxes(type="category")
     fig_grade.update_layout(
         showlegend=False,
         title_font_size=26
     )
-    fig_grade.update_traces(hovertemplate='<b>Number of Problems:</b> %{y}<extra></extra>')
+    fig_grade.update_traces(hovertemplate='<b>Number of Boulders:</b> %{y}<extra></extra>')
     st.plotly_chart(fig_grade, use_container_width=True)
 
 # Bar chart: Number of problems by sector (top 10)
@@ -487,9 +457,9 @@ if filtered_df['sector'].nunique() > 1:
         color="grade_label",
         category_orders={"sector": top_sectors, "grade_label": unique_grades},
         color_discrete_map=grade_color_map,
-        labels={"sector": "Sector", "count": "Number of Problems", "grade_label": "Grade"},
+        labels={"sector": "Sector", "count": "Number of Boulders", "grade_label": "Grade"},
         barmode="stack",
-        title="Number of Problems by Sector (Top 10)",
+        title="Number of Boulders by Sector (Top 10)",
         custom_data=["grade_label"]
     )
     fig_sector.update_layout(
@@ -498,7 +468,7 @@ if filtered_df['sector'].nunique() > 1:
         title_font_size=26
     )
     fig_sector.update_traces(
-        hovertemplate='<b>Grade:</b> %{customdata[0]}<br><b>Number of Problems:</b> %{y}<extra></extra>'
+        hovertemplate='<b>Grade:</b> %{customdata[0]}<br><b>Number of Boulders:</b> %{y}<extra></extra>'
     )
     st.plotly_chart(fig_sector, use_container_width=True)
 
@@ -619,5 +589,26 @@ def_col_width = 150  # Default width in px (Streamlit default is ~150)
 # No width set for 'Name' (default)
 col_cfg['Sector'] = column_config.Column(width=int(def_col_width * 0.5))
 col_cfg['Grade Distribution'] = column_config.Column(width=int(def_col_width * 0.72))
+
+# Add heatmap coloring for '% soft' (green) and '% sandbagged' (red)
+col_cfg['% soft'] = column_config.NumberColumn(
+    '% soft',
+    format='%.0f%%',
+    help='Percent of climbers who found the boulder soft',
+    min_value=0,
+    max_value=100
+)
+col_cfg['% sandbagged'] = column_config.NumberColumn(
+    '% sandbagged',
+    format='%.0f%%',
+    help='Percent of climbers who found the boulder sandbagged',
+    min_value=0,
+    max_value=100
+)
+
+# Convert '% soft' and '% sandbagged' columns to float (remove % if present)
+for col in ['% soft', '% sandbagged']:
+    if col in df_disp.columns:
+        df_disp[col] = df_disp[col].astype(str).str.replace('%','',regex=False).replace('', np.nan).astype(float)
 
 st.dataframe(df_disp, use_container_width=True, column_config=col_cfg)
