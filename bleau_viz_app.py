@@ -488,6 +488,7 @@ if 'stars' in filtered_df.columns:
         title="Average Stars by Grade"
     )
     fig_stars.update_xaxes(type="category")
+    fig_stars.update_yaxes(range=[3.5, 4.4])
     fig_stars.update_layout(
         showlegend=False,
         title_font_size=26
