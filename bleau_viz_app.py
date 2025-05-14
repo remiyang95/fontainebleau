@@ -1,10 +1,15 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import numpy as np
+import re
+import matplotlib
+import matplotlib.colors as mcolors
+from streamlit import column_config
 
 st.set_page_config(page_title="Fontainebleau Boulders", layout="wide")
 st.title("Fontainebleau Boulders")
-# Compact layout: reduce Streamlit default padding and vertical spacing
+# Combined custom CSS for compact layout, dropdowns, expanders, and header anchors
 st.markdown("""
 <style>
 .main .block-container {
@@ -34,27 +39,20 @@ h1 > a[href^='#'], h2 > a[href^='#'], h3 > a[href^='#'], h4 > a[href^='#'], h5 >
 .stMarkdown .stAnchor, .stMarkdown .stMarkdownAnchor, .stMarkdown .css-1aehpvj, .stMarkdown .css-1b7of8t {
     display: none !important;
 }
-/* Hide any anchor inside headings, regardless of class */
 h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
     display: none !important;
 }
+/* Limit height and enable scroll for multiselect dropdown options */
+div[data-baseweb="popover"] ul {
+    max-height: 200px !important;
+    overflow-y: auto !important;
+}
+/* Make expanders more compact */
+.stExpanderHeader {
+    font-size: 1em;
+    padding: 0.1em 0.5em;
+}
 </style>
-""", unsafe_allow_html=True)
-
-# Inject CSS to limit multiselect dropdown height and enable scrolling
-st.markdown("""
-    <style>
-    /* Limit height and enable scroll for multiselect dropdown options */
-    div[data-baseweb="popover"] ul {
-        max-height: 200px !important;
-        overflow-y: auto !important;
-    }
-    /* Make expanders more compact */
-    .stExpanderHeader {
-        font-size: 1em;
-        padding: 0.1em 0.5em;
-    }
-    </style>
 """, unsafe_allow_html=True)
 
 # Load data robustly, handle parsing errors
@@ -71,8 +69,66 @@ def load_data():
 
 df, load_warning = load_data()
 
-# Add Grade Group column
-import re
+# --- Utility functions ---
+def not_none_nan(x):
+    return pd.notna(x) and x is not None and x != ''
+
+def extract_grade_group(grade):
+    if pd.isna(grade):
+        return None
+    m = re.match(r"(\d+)", str(grade))
+    return m.group(1) if m else None
+
+def format_grade(row):
+    main = str(row['grade']) if pd.notna(row['grade']) else ''
+    alt = str(row['alt_grade']) if 'alt_grade' in row and pd.notna(row['alt_grade']) and row['alt_grade'] != row['grade'] else ''
+    return f"{main} ({alt})" if alt else main
+
+def format_percent(val):
+    try:
+        return f"{round(float(val)/100*100)}%" if pd.notna(val) else ''
+    except:
+        return ''
+
+def parse_height(val):
+    try:
+        return float(str(val).split('-')[0])
+    except:
+        return np.nan
+
+def grade_sort_key(g):
+    try:
+        return int(re.match(r"(\d+)", str(g)).group(1))
+    except:
+        return 99
+
+def robust_find_first_grade_idx(grade_list, prefix):
+    for i, g in enumerate(grade_list):
+        if not_none_nan(g) and str(g).startswith(prefix):
+            return i
+    return 0
+
+def robust_find_last_grade_idx(grade_list, prefix):
+    idx = -1
+    for i, g in enumerate(grade_list):
+        if not_none_nan(g) and str(g).startswith(prefix):
+            idx = i
+    return idx if idx != -1 else len(grade_list) - 1
+
+# --- Data loading ---
+def load_data():
+    try:
+        df = pd.read_csv("bleau_detailed_boulders.csv")
+        return df, None
+    except pd.errors.ParserError as e:
+        try:
+            df = pd.read_csv("bleau_detailed_boulders.csv", engine="python", on_bad_lines="warn")
+            return df, None
+        except Exception as e2:
+            return None, f"Failed to load CSV: {e2}"
+
+df, load_warning = load_data()
+
 def extract_grade_group(grade):
     if pd.isna(grade):
         return None
@@ -86,69 +142,54 @@ if df is None:
     st.error("Could not load the CSV file. Please check the file for formatting issues.")
     st.stop()
 
+# --- Constants ---
+EASY_ACCESS_SECTORS = [
+    "Rocher Canon",
+    "Rocher Canon Ouest",
+    "Le Calvaire",
+    "Roche d'Hercule",
+    "Mont Ussy",
+    "Mont Ussy Est",
+]
+easy_access_label = "Easy Access Only"
+easy_access_desc = "Includes Rocher Canon, Rocher Canon Ouest, Le Calvaire, Roche d'Hercule, Mont Ussy, Mont Ussy Est"
+
+# --- Session state defaults ---
+if 'easy_access' not in st.session_state:
+    st.session_state['easy_access'] = False
+
+# --- Constants ---
+EASY_ACCESS_SECTORS = [
+    "Rocher Canon",
+    "Rocher Canon Ouest",
+    "Le Calvaire",
+    "Roche d'Hercule",
+    "Mont Ussy",
+    "Mont Ussy Est",
+]
+easy_access_label = "Easy Access Only"
+easy_access_desc = "Includes Rocher Canon, Rocher Canon Ouest, Le Calvaire, Roche d'Hercule, Mont Ussy, Mont Ussy Est"
+
+# --- Session state defaults ---
+if 'easy_access' not in st.session_state:
+    st.session_state['easy_access'] = False
+
 # Top-of-page filters, always visible
 with st.container():
-    # Easy-Access button logic
-    EASY_ACCESS_SECTORS = [
-        "Rocher Canon",
-        "Rocher Canon Ouest",
-        "Le Calvaire",
-        "Roche d'Hercule",
-        "Mont Ussy",
-        "Mont Ussy Est",
-    ]
-    if 'easy_access' not in st.session_state:
-        st.session_state['easy_access'] = False
-    # Custom styled button with gray copy
-    easy_access_label = "Easy Access Only"
-    easy_access_desc = "Includes Rocher Canon, Rocher Canon Ouest, Le Calvaire, Roche d'Hercule, Mont Ussy, Mont Ussy Est"
-    # Custom CSS for filled button when active
-    st.markdown("""
-    <style>
-    .easy-access-row {display: flex; align-items: center; gap: 1em; margin-bottom: 0.5em;}
-    .easy-access-desc {color: #888; font-size: 0.95em;}
-    .stButton>button.easy-access-active {
-        background: #2563eb !important;
-        color: white !important;
-        border: 1px solid #2563eb !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    # Use Streamlit-native button with strong CSS for width and nowrap
-    # The button is filled (primary) when Easy Access is ON, outlined (secondary) when OFF
-    st.markdown("""
-        <style>
-        div[data-testid="column"] button[data-testid^="baseButton-easy_access_btn"] {
-            min-width: 280px !important;
-            width: 100% !important;
-            white-space: nowrap !important;
-            font-size: 1rem !important;
-            padding-left: 2em !important;
-            padding-right: 2em !important;
-        }
-        .easy-access-helper-below {
-            color: #666;
-            font-size: 1em;
-            margin-top: 0.1em;
-            margin-bottom: 0.7em;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-    # Always show all possible options for each filter
+    # --- Filter options and Easy Access logic ---
+    # (CSS for buttons is already in the main block at the top)
     all_sectors = sorted(df['sector'].dropna().unique().tolist())
     all_grade_groups = sorted(df['grade_group'].dropna().unique().tolist())
     all_grades = sorted(df['grade'].dropna().unique().tolist())
-    # Apply easy-access filter if active
     sectors_to_show = EASY_ACCESS_SECTORS if st.session_state['easy_access'] else all_sectors
 
-    # New row: Sectors and Easy Access side by side
+    # Sectors and Easy Access side by side
     col_sectors, col_easy = st.columns([3, 9])
     with col_sectors:
         with st.expander("Sectors", expanded=True):
             selected_sector = st.selectbox("Select sector", ["All"] + sectors_to_show, index=0, key="sector_selectbox", label_visibility='collapsed')
     with col_easy:
         # Easy Access button and helper text in the same column
-        st.write("")
         clicked = st.button(
             'Easy Access',
             key='easy_access_btn',
@@ -263,20 +304,27 @@ with st.container():
             else:
                 selected_stars = None
     with filter_col3:
-        with st.expander("# Ratings", expanded=True):
+        with st.expander("Number of Ratings", expanded=True):
             ratings = df['num_ratings'].dropna().astype(int)
             if not ratings.empty:
                 min_ratings = int(ratings.min())
                 max_ratings = int(ratings.max())
+                show_max = 100 if max_ratings >= 100 else max_ratings
+                slider_max_label = '100+' if max_ratings >= 100 else str(max_ratings)
                 selected_ratings = st.slider(
                     "Number of Ratings",
                     min_value=min_ratings,
-                    max_value=max_ratings,
-                    value=(10, max_ratings) if 10 >= min_ratings and 10 <= max_ratings else (min_ratings, max_ratings),
+                    max_value=show_max,
+                    value=(10, show_max) if 10 >= min_ratings and 10 <= show_max else (min_ratings, show_max),
                     step=1,
+                    format="%d",
                     key="ratings_slider",
                     label_visibility='collapsed',
                 )
+                # If user selects the max, treat as 100 or more
+                if show_max == 100 and selected_ratings[1] == 100:
+                    selected_ratings = (selected_ratings[0], max_ratings)
+
             else:
                 selected_ratings = None
     with filter_col4:
@@ -340,14 +388,14 @@ def grade_sort_key(g):
 # Show 'Number of Problems by Grade Group' and 'Grade' charts side-by-side (flipped)
 col_group, col_grade = st.columns(2)
 # --- Consistent color mapping for grades and grade groups ---
-from matplotlib import cm
+import matplotlib
 import matplotlib.colors as mcolors
 import numpy as np
 # 1. Assign each grade a unique color along the gradient
 all_grades = filtered_df['grade'].dropna().unique().tolist()
 all_grades = sorted(all_grades, key=grade_sort_key)
 n_grades = len(all_grades)
-grad_color_map = cm.get_cmap('RdYlGn_r')
+grad_color_map = matplotlib.colormaps.get_cmap('RdYlGn_r')
 grad_colors = [mcolors.to_hex(grad_color_map(i/(max(n_grades-1,1)))) for i in range(n_grades)]
 grade_color_map = {str(g): c for g, c in zip(all_grades, grad_colors)}
 
