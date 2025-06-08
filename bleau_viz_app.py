@@ -257,7 +257,7 @@ with st.sidebar:
                 min_value=min_stars,
                 max_value=max_stars,
                 value=default_stars,
-                step=0.5,
+                step=0.1,
                 format="%.1f",
                 key="stars_slider",
                 label_visibility='collapsed',
@@ -287,6 +287,21 @@ with st.sidebar:
                 selected_ratings = (selected_ratings[0], max_ratings)
         else:
             selected_ratings = None
+    # Tag exclusions
+    with st.expander("Tag Exclusions", expanded=True):
+        exclude_haut = st.checkbox(
+            "Exclude 'haut'",
+            value=False,
+            key="exclude_haut",
+            help="Exclude problems tagged as 'haut' (highball)"
+        )
+        exclude_expo = st.checkbox(
+            "Exclude 'expo'",
+            value=False,
+            key="exclude_expo",
+            help="Exclude problems tagged as 'expo' (exposed)"
+        )
+    
     # Shortest Climber Height
     with st.expander("Shortest Climber Height", expanded=True):
         height_bands = sorted([str(x) for x in df['shortest_climber_height'].dropna().unique()])
@@ -333,6 +348,12 @@ if 'selected_stars' in locals() and selected_stars is not None:
 # For # ratings
 if 'selected_ratings' in locals() and selected_ratings is not None:
     filtered_df = filtered_df[(filtered_df['num_ratings'].astype(int) >= selected_ratings[0]) & (filtered_df['num_ratings'].astype(int) <= selected_ratings[1])]
+
+# Apply tag exclusions
+if st.session_state.get('exclude_haut', False):
+    filtered_df = filtered_df[~filtered_df['tags'].fillna('').str.contains('haut', case=False, na=False)]
+if st.session_state.get('exclude_expo', False):
+    filtered_df = filtered_df[~filtered_df['tags'].fillna('').str.contains('expo', case=False, na=False)]
 
 # Define custom sort key for grades (used in filter)
 def grade_sort_key(g):
