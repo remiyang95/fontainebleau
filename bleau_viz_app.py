@@ -195,23 +195,17 @@ with st.sidebar:
     st.header("Filters")
     # Sectors
     with st.expander("Sectors", expanded=True):
-        sectors_to_show = EASY_ACCESS_SECTORS if st.session_state['easy_access'] else sorted(df['sector'].dropna().unique().tolist())
+        # Update sectors to show based on easy access selection
+        sectors_to_show = EASY_ACCESS_SECTORS if st.session_state.get('easy_access', False) else sorted(df['sector'].dropna().unique().tolist())
         selected_sector = st.selectbox("Select sector", ["All"] + sectors_to_show, index=0, key="sector_selectbox", label_visibility='collapsed')
-        # Easy Access button and helper text
-        clicked = st.button(
-            'Easy Access',
-            key='easy_access_btn',
-            type='primary' if st.session_state.get('easy_access', False) else 'secondary',
-            help=None
-        )
-        if clicked:
-            st.session_state['easy_access'] = not st.session_state.get('easy_access', False)
-            st.rerun()
-        st.markdown(
-            '<div style="margin-top: 0; color: #666; font-size: 0.85em; font-style: italic; padding-bottom: 0.7em;">'
-            '<b>Easy Access</b>: Rocher Canon (+Ouest), Le Calvaire, Roche d\'Hercule, Mont Ussy (+Est)'
-            '</div>',
-            unsafe_allow_html=True
+        
+        # Easy Access checkbox
+        st.checkbox(
+            "🚆🚶 Easy Access",
+            value=st.session_state.get('easy_access', False),
+            key='easy_access',
+            help="Rocher Canon (+Ouest), Le Calvaire, Roche d'Hercule, Mont Ussy (+Est)",
+            on_change=lambda: None
         )
     # Grades
     with st.expander("Grades", expanded=True):
@@ -413,33 +407,38 @@ for g in all_grade_groups:
 
 if show_group_chart:
     with col_group:
-        # Replace None/null grade_group with 'Other'
-        group_counts = filtered_df['grade_group'].fillna('Other').value_counts()
-        # Move 'Other' to the end
-        if 'Other' in group_counts.index:
-            group_counts = group_counts[[g for g in group_counts.index if g != 'Other'] + ['Other']]
-        # Convert to int and sort (excluding 'Other')
-        try:
-            idx_numeric = [int(float(x)) for x in group_counts.index if x != 'Other']
-        except Exception:
-            idx_numeric = [x for x in group_counts.index if x != 'Other']
-        sorted_idx = sorted(idx_numeric)
-        x_labels = [str(x) for x in sorted_idx] + (['Other'] if 'Other' in group_counts.index else [])
-        fig_group = px.bar(
-            x=x_labels,
-            y=group_counts.values,
-            color=x_labels,
-            color_discrete_map=grade_group_color_map,
-            labels={'x': 'Grade Group', 'y': 'Number of Boulders'},
-            title="Number of Boulders by Grade Group"
-        )
-        fig_group.update_xaxes(type="category")
-        fig_group.update_layout(
-            showlegend=False,
-            title_font_size=26  # 30% larger than typical 20px
-        )
-        fig_group.update_traces(hovertemplate='<b>Number of Boulders:</b> %{y}<extra></extra>')
-        st.plotly_chart(fig_group, use_container_width=True)
+        # Create a DataFrame for easier manipulation
+        group_df = filtered_df['grade_group'].fillna('Other').value_counts().reset_index()
+        group_df.columns = ['group', 'count']
+        
+        if not group_df.empty:
+            # Separate numeric and non-numeric groups
+            numeric_groups = group_df[group_df['group'] != 'Other'].copy()
+            other_groups = group_df[group_df['group'] == 'Other'].copy()
+            
+            # Convert to numeric for proper sorting
+            numeric_groups['group_num'] = pd.to_numeric(numeric_groups['group'], errors='coerce')
+            numeric_groups = numeric_groups.sort_values('group_num')
+            
+            # Combine back with 'Other' at the end
+            sorted_groups = pd.concat([numeric_groups, other_groups])
+            
+            # Create the plot
+            fig_group = px.bar(
+                x=sorted_groups['group'].astype(str),  # Ensure all are strings
+                y=sorted_groups['count'],
+                color=sorted_groups['group'].astype(str),
+                color_discrete_map=grade_group_color_map,
+                labels={'x': 'Grade Group', 'y': 'Number of Boulders'},
+                title="Number of Boulders by Grade Group"
+            )
+            fig_group.update_xaxes(type="category")
+            fig_group.update_layout(
+                showlegend=False,
+                title_font_size=26  # 30% larger than typical 20px
+            )
+            fig_group.update_traces(hovertemplate='<b>Number of Boulders:</b> %{y}<extra></extra>')
+            st.plotly_chart(fig_group, use_container_width=True)
 with col_grade:
     grade_counts = filtered_df['grade'].value_counts()
     grade_counts = grade_counts.loc[sorted(grade_counts.index, key=grade_sort_key)]
