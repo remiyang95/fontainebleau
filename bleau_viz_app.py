@@ -167,45 +167,60 @@ EASY_ACCESS_SECTORS = [
     "Mont Ussy",
     "Mont Ussy Est",
 ]
-easy_access_label = "Easy Access Only"
-easy_access_desc = "Includes Rocher Canon, Rocher Canon Ouest, Le Calvaire, Roche d'Hercule, Mont Ussy, Mont Ussy Est"
 
-# --- Session state defaults ---
-if 'easy_access' not in st.session_state:
-    st.session_state['easy_access'] = False
-
-# --- Constants ---
-EASY_ACCESS_SECTORS = [
-    "Rocher Canon",
-    "Rocher Canon Ouest",
-    "Le Calvaire",
-    "Roche d'Hercule",
-    "Mont Ussy",
-    "Mont Ussy Est",
+MEDIUM_ACCESS_SECTORS = [
+    "Rocher d'Avon",
+    "Rocher d'Avon Ouest",
+    "Rocher d'Avon Est",
+    "Long Rocher",
+    "Restant du Long Rocher",
+    "Restant du Long Rocher Sud",
+    "Restant du Long Rocher Ouest",
+    "Restant du Long Rocher Est",
+    "Restant du Long Rocher Nord",
+    "Rocher Gréau",
+    "Rocher Gréau Pyrénées",
+    "Petit Bois"
 ]
+
 easy_access_label = "Easy Access Only"
-easy_access_desc = "Includes Rocher Canon, Rocher Canon Ouest, Le Calvaire, Roche d'Hercule, Mont Ussy, Mont Ussy Est"
+easy_access_desc = "Rocher Canon, Le Calvaire, Roche d'Hercule, Mont Ussy"
 
 # --- Session state defaults ---
 if 'easy_access' not in st.session_state:
     st.session_state['easy_access'] = False
+if 'medium_access' not in st.session_state:
+    st.session_state['medium_access'] = False
 
 # Top-of-page filters, always visible
 with st.sidebar:
     st.header("Filters")
     # Sectors
     with st.expander("Sectors", expanded=True):
-        # Update sectors to show based on easy access selection
-        sectors_to_show = EASY_ACCESS_SECTORS if st.session_state.get('easy_access', False) else sorted(df['sector'].dropna().unique().tolist())
+        # Get base sectors based on access selection
+        if st.session_state.get('easy_access', False):
+            sectors_to_show = EASY_ACCESS_SECTORS
+        elif st.session_state.get('medium_access', False):
+            sectors_to_show = MEDIUM_ACCESS_SECTORS
+        else:
+            sectors_to_show = sorted(df['sector'].dropna().unique().tolist())
+            
         selected_sector = st.selectbox("Select sector", ["All"] + sectors_to_show, index=0, key="sector_selectbox", label_visibility='collapsed')
         
-        # Easy Access checkbox
+        # Access checkboxes
         st.checkbox(
             "🚆🚶 Easy Access",
             value=st.session_state.get('easy_access', False),
             key='easy_access',
-            help="Rocher Canon (+Ouest), Le Calvaire, Roche d'Hercule, Mont Ussy (+Est)",
-            on_change=lambda: None
+            help="Rocher Canon, Le Calvaire, Roche d'Hercule, Mont Ussy",
+            on_change=lambda: st.session_state.update({"medium_access": False} if st.session_state.get('easy_access', False) else {})
+        )
+        st.checkbox(
+            "🚆🚶🚶 Medium Access",
+            value=st.session_state.get('medium_access', False),
+            key='medium_access',
+            help="Rocher d'Avon, Long Rocher, Rocher Gréau, Petit Bois",
+            on_change=lambda: st.session_state.update({"easy_access": False} if st.session_state.get('medium_access', False) else {})
         )
     # Grades
     with st.expander("Grades", expanded=True):
@@ -318,9 +333,11 @@ with st.sidebar:
 
 # Use only the user's selections for filtering
 filtered_df = df.copy()
-# Apply Easy-Access sector filter if active
+# Apply access filters
 if 'easy_access' in st.session_state and st.session_state['easy_access']:
     filtered_df = filtered_df[filtered_df['sector'].isin(EASY_ACCESS_SECTORS)]
+elif 'medium_access' in st.session_state and st.session_state['medium_access']:
+    filtered_df = filtered_df[filtered_df['sector'].isin(MEDIUM_ACCESS_SECTORS)]
 if selected_sector != "All":
     filtered_df = filtered_df[filtered_df['sector'] == selected_sector]
 # For grades, use the string-based slider range from sorted_grades
