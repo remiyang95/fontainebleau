@@ -344,7 +344,7 @@ if selected_sector != "All":
 if 'sorted_grades' in locals() and selected_grades:
     filtered_df = filtered_df[filtered_df['grade'].isin(selected_grades)]
 # For shortest climber height
-if 'selected_height' in locals() and selected_height_bands:
+if 'selected_height_bands' in locals() and selected_height_bands:
     def parse_height(val):
         if pd.isna(val) or val == '':
             return np.nan
