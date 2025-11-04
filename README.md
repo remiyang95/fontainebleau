@@ -1,21 +1,25 @@
 # fontainebleau
 
+A Streamlit visualization app for exploring Fontainebleau bouldering data.
+
 ## Project Structure
 
-- `backend/` — Django backend (Python)
-- `frontend/` — React frontend (JavaScript)
+- `bleau_viz_app.py` — Main Streamlit application
+- `bleau_detailed_boulders.csv` — Boulder data (69,000+ problems)
 
 ## Getting Started
 
-### Backend (Django)
+### Running the Streamlit App
+
 ```
-cd backend
-# (activate venv if needed)
-python manage.py runserver
+# Activate virtual environment (if needed)
+source venv/bin/activate  # or: venv\Scripts\activate on Windows
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the app
+streamlit run bleau_viz_app.py
 ```
 
-### Frontend (React)
-```
-cd frontend
-npm start
-```
+The app will open in your browser at `http://localhost:8501`
