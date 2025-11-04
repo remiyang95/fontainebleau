@@ -458,23 +458,26 @@ if show_group_chart:
             st.plotly_chart(fig_group, use_container_width=True)
 with col_grade:
     grade_counts = filtered_df['grade'].value_counts()
-    grade_counts = grade_counts.loc[sorted(grade_counts.index, key=grade_sort_key)]
-    grades_x = [str(g) for g in grade_counts.index]
-    fig_grade = px.bar(
-        x=grades_x,
-        y=grade_counts.values,
-        color=grades_x,
-        color_discrete_map=grade_color_map,
-        labels={'x': 'Grade', 'y': 'Number of Boulders'},
-        title="Number of Boulders by Grade"
-    )
-    fig_grade.update_xaxes(type="category")
-    fig_grade.update_layout(
-        showlegend=False,
-        title_font_size=26
-    )
-    fig_grade.update_traces(hovertemplate='<b>Number of Boulders:</b> %{y}<extra></extra>')
-    st.plotly_chart(fig_grade, use_container_width=True)
+    if not grade_counts.empty:
+        grade_counts = grade_counts.loc[sorted(grade_counts.index, key=grade_sort_key)]
+        grades_x = [str(g) for g in grade_counts.index]
+        fig_grade = px.bar(
+            x=grades_x,
+            y=grade_counts.values,
+            color=grades_x,
+            color_discrete_map=grade_color_map,
+            labels={'x': 'Grade', 'y': 'Number of Boulders'},
+            title="Number of Boulders by Grade"
+        )
+        fig_grade.update_xaxes(type="category")
+        fig_grade.update_layout(
+            showlegend=False,
+            title_font_size=26
+        )
+        fig_grade.update_traces(hovertemplate='<b>Number of Boulders:</b> %{y}<extra></extra>')
+        st.plotly_chart(fig_grade, use_container_width=True)
+    else:
+        st.info("No boulders match the selected filters.")
 
 # Bar chart: Number of problems by sector (top 10)
 if filtered_df['sector'].nunique() > 1:
@@ -485,53 +488,55 @@ if filtered_df['sector'].nunique() > 1:
     stacked_df['grade_label'] = stacked_df['grade'].apply(lambda x: str(x) if pd.notna(x) else 'Other')
     summary_df = stacked_df.groupby(['sector', 'grade_label']).size().reset_index(name='count')
     # Use the same grade_color_map as above
-    unique_grades = [g for g in grade_color_map.keys() if g in summary_df['grade_label'].unique()]
-    import plotly.express as px
-    fig_sector = px.bar(
-        summary_df,
-        x="sector",
-        y="count",
-        color="grade_label",
-        category_orders={"sector": top_sectors, "grade_label": unique_grades},
-        color_discrete_map=grade_color_map,
-        labels={"sector": "Sector", "count": "Number of Boulders", "grade_label": "Grade"},
-        barmode="stack",
-        title="Number of Boulders by Sector (Top 10)",
-        custom_data=["grade_label"]
-    )
-    fig_sector.update_layout(
-        legend_title_text='Grade',
-        hoverlabel=dict(align="left", bgcolor="white", bordercolor="black"),
-        title_font_size=26
-    )
-    fig_sector.update_traces(
-        hovertemplate='<b>Grade:</b> %{customdata[0]}<br><b>Number of Boulders:</b> %{y}<extra></extra>'
-    )
-    st.plotly_chart(fig_sector, use_container_width=True)
+    if not summary_df.empty:
+        unique_grades = [g for g in grade_color_map.keys() if g in summary_df['grade_label'].unique()]
+        import plotly.express as px
+        fig_sector = px.bar(
+            summary_df,
+            x="sector",
+            y="count",
+            color="grade_label",
+            category_orders={"sector": top_sectors, "grade_label": unique_grades},
+            color_discrete_map=grade_color_map,
+            labels={"sector": "Sector", "count": "Number of Boulders", "grade_label": "Grade"},
+            barmode="stack",
+            title="Number of Boulders by Sector (Top 10)",
+            custom_data=["grade_label"]
+        )
+        fig_sector.update_layout(
+            legend_title_text='Grade',
+            hoverlabel=dict(align="left", bgcolor="white", bordercolor="black"),
+            title_font_size=26
+        )
+        fig_sector.update_traces(
+            hovertemplate='<b>Grade:</b> %{customdata[0]}<br><b>Number of Boulders:</b> %{y}<extra></extra>'
+        )
+        st.plotly_chart(fig_sector, use_container_width=True)
 
 # Bar chart: Average stars by grade
 if 'stars' in filtered_df.columns:
     avg_stars = filtered_df.groupby('grade')['stars'].mean().dropna()
-    # Sort index using grade_sort_key
-    avg_stars = avg_stars.loc[sorted(avg_stars.index, key=grade_sort_key)]
-    grades_x = [str(g) for g in avg_stars.index]
-    # Use the same grade_color_map as above
-    fig_stars = px.bar(
-        x=grades_x,
-        y=avg_stars.values,
-        color=grades_x,
-        color_discrete_map=grade_color_map,
-        labels={'x': 'Grade', 'y': 'Average Stars'},
-        title="Average Stars by Grade"
-    )
-    fig_stars.update_xaxes(type="category")
-    fig_stars.update_yaxes(range=[3.5, 4.4])
-    fig_stars.update_layout(
-        showlegend=False,
-        title_font_size=26
-    )
-    fig_stars.update_traces(hovertemplate='<b>Average Stars:</b> %{y:.2f}<extra></extra>')
-    st.plotly_chart(fig_stars, use_container_width=True)
+    if not avg_stars.empty:
+        # Sort index using grade_sort_key
+        avg_stars = avg_stars.loc[sorted(avg_stars.index, key=grade_sort_key)]
+        grades_x = [str(g) for g in avg_stars.index]
+        # Use the same grade_color_map as above
+        fig_stars = px.bar(
+            x=grades_x,
+            y=avg_stars.values,
+            color=grades_x,
+            color_discrete_map=grade_color_map,
+            labels={'x': 'Grade', 'y': 'Average Stars'},
+            title="Average Stars by Grade"
+        )
+        fig_stars.update_xaxes(type="category")
+        fig_stars.update_yaxes(range=[3.5, 4.4])
+        fig_stars.update_layout(
+            showlegend=False,
+            title_font_size=26
+        )
+        fig_stars.update_traces(hovertemplate='<b>Average Stars:</b> %{y:.2f}<extra></extra>')
+        st.plotly_chart(fig_stars, use_container_width=True)
 
 # Data table of filtered problems
 
