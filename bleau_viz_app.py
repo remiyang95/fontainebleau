@@ -649,6 +649,13 @@ col_cfg['% sandbagged'] = column_config.NumberColumn(
     max_value=100
 )
 
+# Make URL column clickable
+if 'URL' in df_disp.columns:
+    col_cfg['URL'] = column_config.LinkColumn(
+        'URL',
+        help='Click to open boulder page on bleau.info'
+    )
+
 # Convert '% soft' and '% sandbagged' columns to float (remove % if present)
 for col in ['% soft', '% sandbagged']:
     if col in df_disp.columns:
