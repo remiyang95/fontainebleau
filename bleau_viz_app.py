@@ -618,6 +618,9 @@ if 'Grade' in df_table.columns:
         df_table = df_table.drop(columns=['grade'])
 existing_cols = [col for col in display_cols if col in df_table.columns]
 df_disp = df_table[existing_cols].copy()
+# Reset index to show sequential row numbers starting at 1
+df_disp = df_disp.reset_index(drop=True)
+df_disp.index = df_disp.index + 1
 # Ensure '# ratings' is integer (no decimals)
 if '# ratings' in df_disp.columns:
     df_disp['# ratings'] = df_disp['# ratings'].apply(lambda x: int(x) if pd.notna(x) and x != '' else '')
