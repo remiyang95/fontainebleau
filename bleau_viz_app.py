@@ -311,25 +311,25 @@ with st.sidebar:
             help="Exclude problems tagged as 'expo' (exposed)"
         )
     
-    # Shortest Climber Height
-    with st.expander("Shortest Climber Height", expanded=True):
+    # Maximum Height
+    with st.expander("Maximum Height", expanded=True):
         height_bands = sorted([str(x) for x in df['shortest_climber_height'].dropna().unique()])
         if height_bands:
-            idx_min, idx_max = 0, len(height_bands) - 1
-            selected_idx_range = st.slider(
-                "Select height band range",
-                min_value=idx_min,
+            idx_max = len(height_bands) - 1
+            selected_max_idx = st.slider(
+                "Maximum height",
+                min_value=0,
                 max_value=idx_max,
-                value=(idx_min, idx_max),
+                value=idx_max,
                 step=1,
                 format="",
                 key="height_slider",
                 label_visibility='collapsed',
             )
-            selected_height_bands = height_bands[selected_idx_range[0]:selected_idx_range[1]+1]
-            st.caption(f"Selected: {selected_height_bands[0]} cm to {selected_height_bands[-1]} cm")
+            selected_max_height = height_bands[selected_max_idx]
+            st.caption(f"Show boulders climbed by someone ≤ {selected_max_height} cm")
         else:
-            selected_height_bands = []
+            selected_max_height = None
 
 # Use only the user's selections for filtering
 filtered_df = df.copy()
@@ -343,8 +343,8 @@ if selected_sector != "All":
 # For grades, use the string-based slider range from sorted_grades
 if 'sorted_grades' in locals() and selected_grades:
     filtered_df = filtered_df[filtered_df['grade'].isin(selected_grades)]
-# For shortest climber height
-if 'selected_height_bands' in locals() and selected_height_bands:
+# For maximum height
+if 'selected_max_height' in locals() and selected_max_height is not None:
     def parse_height(val):
         if pd.isna(val) or val == '':
             return np.nan
@@ -352,7 +352,8 @@ if 'selected_height_bands' in locals() and selected_height_bands:
             return float(val)
         m = re.match(r"(\d+)", str(val))
         return float(m.group(1)) if m else np.nan
-    filtered_df = filtered_df[filtered_df['shortest_climber_height'].apply(parse_height).between(parse_height(selected_height_bands[0]), parse_height(selected_height_bands[-1]), inclusive='both')]
+    max_height_value = parse_height(selected_max_height)
+    filtered_df = filtered_df[filtered_df['shortest_climber_height'].apply(parse_height) <= max_height_value]
 # For stars
 if 'selected_stars' in locals() and selected_stars is not None:
     filtered_df = filtered_df[(filtered_df['stars'].astype(float) >= selected_stars[0]) & (filtered_df['stars'].astype(float) <= selected_stars[1])]
