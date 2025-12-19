@@ -51,6 +51,17 @@ div[data-baseweb="popover"] ul {
 .stExpanderHeader {
     font-size: 1em;
     padding: 0.1em 0.5em;
+    margin-bottom: 0.1em;
+}
+/* Make expander content more compact */
+[data-testid="stExpander"] > div[data-testid="stExpanderContent"] {
+    padding: 0.5rem 0.5rem 0.25rem 0.5rem;
+}
+
+/* Make multiselect more compact */
+[data-testid="stExpander"] .stMultiSelect {
+    margin: 0;
+    padding: 0;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -296,6 +307,23 @@ with st.sidebar:
                 selected_ratings = (selected_ratings[0], max_ratings)
         else:
             selected_ratings = None
+    # Tag inclusions
+    with st.expander("Tag Inclusions", expanded=True):
+        # Extract all unique tags from the dataset
+        all_tags = set()
+        for tags in df['tags'].dropna():
+            all_tags.update([tag.strip() for tag in tags.split(',')])
+        all_tags = sorted(list(all_tags))
+        
+        # Create searchable multiselect for tag inclusion
+        selected_include_tags = st.multiselect(
+            "",
+            options=all_tags,
+            default=[],
+            key="include_tags",
+            label_visibility="collapsed"
+        )
+    
     # Tag exclusions
     with st.expander("Tag Exclusions", expanded=True):
         exclude_haut = st.checkbox(
@@ -360,6 +388,12 @@ if 'selected_stars' in locals() and selected_stars is not None:
 # For # ratings
 if 'selected_ratings' in locals() and selected_ratings is not None:
     filtered_df = filtered_df[(filtered_df['num_ratings'].astype(int) >= selected_ratings[0]) & (filtered_df['num_ratings'].astype(int) <= selected_ratings[1])]
+
+# Apply tag inclusions and exclusions
+if selected_include_tags:
+    # Create a pattern that matches any of the selected tags
+    tag_pattern = '|'.join(map(re.escape, selected_include_tags))
+    filtered_df = filtered_df[filtered_df['tags'].fillna('').str.contains(tag_pattern, case=False, na=False)]
 
 # Apply tag exclusions
 if st.session_state.get('exclude_haut', False):
